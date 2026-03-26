@@ -1,5 +1,4 @@
 RDP Brute Force Attack Detection using Splunk (SOC Simulation Lab)
-
 Overview
 This project simulates a brute-force attack on a Windows machine using RDP from a Kali Linux attacker system and demonstrates how to detect this activity using Splunk.
 
