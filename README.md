@@ -1,23 +1,12 @@
-# Lab 3 — Lateral Movement Detection using RDP and Splunk
+# Lab 3 — RDP Lateral Movement Detection using Splunk
 
 ## Overview
 
-This project simulates a real-world lateral movement attack using Remote Desktop Protocol (RDP) and demonstrates how such activity can be detected using Splunk and Windows logs.
+This lab demonstrates how an attacker performs lateral movement using Remote Desktop Protocol (RDP) and how such activity can be detected using Windows Security Logs and Sysmon, with analysis performed in Splunk.
 
-The workflow follows a typical SOC process:
+The attack flow:
 
-Reconnaissance → Credential Attack → RDP Login → Command Execution → Detection
-
----
-
-## Objectives
-
-* Simulate RDP-based lateral movement from Kali Linux to Windows
-* Generate Windows Security Event Logs (4625, 4624)
-* Capture attacker activity using Sysmon (Event ID 1)
-* Ingest logs into Splunk
-* Detect attacker behavior using SPL queries
-* Correlate login activity with command execution
+Port Discovery → Credential Attack → RDP Access → Command Execution → Detection
 
 ---
 
@@ -28,176 +17,189 @@ Reconnaissance → Credential Attack → RDP Login → Command Execution → Det
 | Attacker   | Kali Linux (192.168.20.11)     |
 | Target     | Windows 10 Pro (192.168.20.10) |
 | SIEM       | Splunk Enterprise              |
-| Monitoring | Sysmon + Windows Event Logs    |
-| Protocol   | RDP (Port 3389)                |
+| Monitoring | Sysmon + Windows Logs          |
+| Protocol   | RDP (3389)                     |
 
 ---
 
-## Tools Used
-
-* Nmap
-* FreeRDP (xfreerdp)
-* Splunk Enterprise
-* Windows Event Viewer
-* Sysmon
-
----
-
-## Attack Workflow
-
-### 1. Reconnaissance
-
-The attacker scans the target machine to check if RDP is open:
+## 1. Port Scanning (RDP Discovery)
 
 ```bash
 nmap -Pn -p 3389 192.168.20.10
 ```
 
-Screenshot:
-![Nmap Scan](Screenshots/04.png)
+![Port Scan](./1.png)
+
+RDP port 3389 is open on the target.
 
 ---
 
-### 2. RDP Enabled on Target
+## 2. RDP Enabled on Target
 
-RDP is enabled on the Windows machine.
+RDP is enabled in system settings.
 
-Screenshot:
-![RDP Enabled](screenshots/01.png)
-
----
-
-### 3. Port Verification
-
-Confirmed that RDP service is listening on port 3389.
-
-Screenshot:
-![Port Listening](screenshots/02.png)
+![RDP Enabled](./2.png)
 
 ---
 
-### 4. Failed Login Attempts
+## 3. RDP Port Verification
 
-Attacker attempts multiple incorrect logins using RDP.
+```cmd
+netstat -an | find "3389"
+```
 
-Result:
+![Netstat](./3.png)
 
-* Event ID 4625 generated
-* Failure reason: Unknown user name or bad password
-
-Screenshot:
-![Failed Login](screenshots/08.png)
+Port is in LISTENING state.
 
 ---
 
-### 5. Successful RDP Login
+## 4. Initial RDP Connection Attempt (Failure)
 
-Attacker successfully logs in using valid credentials.
+```bash
+xfreerdp /u:admin /p:Admin123 /v:192.168.20.10
+```
 
-Result:
+![Failed Login](./4.png)
 
-* Event ID 4624
-* Logon Type = 10 (Remote Interactive)
-
-Screenshot:
-![Successful Login](screenshots/09.png)
+Login fails due to incorrect credentials.
 
 ---
 
-### 6. Attacker Command Execution
+## 5. Brute Force / Retry Attempt
 
-After gaining access, attacker executes:
+Another attempt with different credentials.
+
+![Retry Attempt](./5.png)
+
+Still failing authentication.
+
+---
+
+## 6. Successful RDP Login
+
+Correct credentials used → access granted.
+
+![Successful RDP](./6.png)
+
+Attacker gains remote access.
+
+---
+
+## 7. Interactive Access on Target
+
+Attacker now inside Windows system.
+
+![Inside System](./7.png)
+
+---
+
+## 8. Command Execution
 
 ```cmd
 whoami
 ```
 
-Captured using Sysmon:
+![Whoami](./8.png)
 
-* Event ID 1 (Process Creation)
-* Image: whoami.exe
-* Parent: cmd.exe
-
-Screenshot:
-![Sysmon Whoami](screenshots/12.png)
+Confirms user: admin
 
 ---
 
-## Splunk Detection
+## 9. Failed Login Logs (Event ID 4625)
 
-### Failed Login Detection
+Windows logs failed login attempts.
 
-```spl
-index=endpoint EventCode=4625
-```
+![Event 4625](./9.png)
 
----
+Key indicators:
 
-### Successful RDP Login Detection
-
-```spl
-index=endpoint EventCode=4624 Logon_Type=10
-| table _time host Account_Name Source_Network_Address
-```
+* Source IP: 192.168.20.11
+* Failure reason: Bad password
 
 ---
 
-### Brute Force Detection
+## 10. Successful Login Logs (Event ID 4624)
+
+![Event 4624](./10.png)
+
+Shows successful RDP login.
+
+---
+
+## 11. Splunk Log Analysis (Failed + Success)
 
 ```spl
 index=endpoint (EventCode=4624 OR EventCode=4625)
 | stats count by Source_Network_Address Account_Name EventCode
 ```
 
+![Splunk Stats](./11.png)
+
 ---
 
-### Command Execution Detection (Sysmon)
+## 12. Splunk RDP Detection Query
 
 ```spl
-index=endpoint EventCode=1 "whoami"
-| table _time User Image CommandLine ParentImage
+index=endpoint EventCode=4624 Logon_Type=10
+| table _time host Account_Name Source_Network_Address Logon_Type
 ```
 
+![Splunk RDP](./12.png)
+
 ---
 
-### Attack Timeline Correlation
+## 13. Attack Correlation (Login + Execution)
 
 ```spl
-index=endpoint (EventCode=4624 OR EventCode=1) Account_Name=admin
+index=endpoint (EventCode=4624 OR EventCode=1)
 | eval activity=case(EventCode=4624,"RDP Login",EventCode=1,"Command Execution")
-| table _time activity host Account_Name Source_Network_Address Image CommandLine ParentImage
-| sort _time
+| table _time activity host Account_Name Source_Network_Address Image CommandLine
 ```
+
+![Correlation](./13.png)
+
+---
+
+## 14. Sysmon Process Detection
+
+Sysmon captures command execution.
+
+![Sysmon](./14.png)
+
+Event ID: 1
+Process: whoami.exe
 
 ---
 
 ## Key Findings
 
-* Multiple failed login attempts detected from attacker IP: 192.168.20.11
-* Successful RDP login confirmed with Logon Type 10
-* Attacker gained interactive access to the system
-* Post-login activity captured using Sysmon
-* Command execution (whoami) verified attacker presence
+* Multiple failed login attempts detected
+* Successful RDP login from attacker IP
+* Source IP identified as 192.168.20.11
+* Attacker gained remote access
+* Command execution tracked using Sysmon
+* Full attack timeline correlated in Splunk
 
 ---
 
 ## Conclusion
 
-This lab demonstrates how attackers use RDP for lateral movement and how defenders can detect:
+This lab demonstrates real-world lateral movement via RDP and how defenders can detect it using:
 
-* Brute-force login attempts
-* Successful remote access
-* Post-exploitation command execution
+* Windows Event Logs (Authentication)
+* Sysmon (Process Monitoring)
+* Splunk (Correlation & Detection)
 
-By correlating Windows Security logs with Sysmon and analyzing them in Splunk, we can build a complete attack timeline and improve detection capabilities.
+Monitoring failed logins followed by successful access is critical for identifying compromised systems.
 
 ---
 
 ## Skills Demonstrated
 
-* Threat Detection
 * SIEM (Splunk)
-* Log Analysis
+* Threat Detection
+* Log Correlation
 * Windows Security Monitoring
 * Sysmon Analysis
-* Attack Simulation (Red + Blue Team)
+* Attack Simulation
