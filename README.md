@@ -54,7 +54,7 @@ nmap -Pn -p 3389 192.168.20.10
 ```
 
 Screenshot:
-![Nmap Scan](screenshots/04.png)
+![Nmap Scan](Screenshots/04.png)
 
 ---
 
