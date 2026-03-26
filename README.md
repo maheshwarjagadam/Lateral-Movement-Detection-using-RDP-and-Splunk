@@ -168,39 +168,36 @@ Login → Command execution
 
 ![Step 12](12.png)
 
-------------------------------------------------------------
 
-#Key Findings
+
+## Key Findings
 
 Attacker IP: 192.168.20.11
 Target Account: admin
 Attack Type: RDP Brute Force
 
-#Evidence:
+## Evidence:
 
 - Multiple failed login attempts (Event ID 4625)
 - Successful login (Event ID 4624)
 - Command execution (Sysmon Event ID 1)
 
-------------------------------------------------------------
-
-#Detection Strategy
+## Detection Strategy
 
 - Monitor repeated failed logins from same IP
 - Detect multiple failures followed by success
 - Correlate login activity with process execution
 
-------------------------------------------------------------
 
-#Challenges Faced
+
+## Challenges Faced
 
 - Understanding log correlation
 - Mapping attack behavior to events
 - Writing effective Splunk queries
 
-------------------------------------------------------------
 
-#Conclusion
+## Conclusion
 
 This lab demonstrates how brute-force attacks can be simulated and detected using Splunk. By correlating failed and successful login attempts with process execution, attacker activity can be clearly identified.
 
